@@ -1,4 +1,4 @@
-package com.project.payflow.domain.paymen.enums;
+package com.project.payflow.domain.payment.enums;
 
 public enum PaymentStatus {
     PENDING, // Payment 레코드 생성 시 초기 상태. PG사 응답 전 단계

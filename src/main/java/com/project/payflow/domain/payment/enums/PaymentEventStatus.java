@@ -1,4 +1,4 @@
-package com.project.payflow.domain.paymen.enums;
+package com.project.payflow.domain.payment.enums;
 
 public enum PaymentEventStatus {
     PENDING, // PaymentEvent INSERT 시 초기 상태, PG 처리 중임을 표시
