@@ -1,0 +1,18 @@
+package com.project.payflow.domain.product.exception;
+
+import com.project.payflow.global.apiPayload.code.BaseErrorCode;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import org.springframework.http.HttpStatus;
+
+@AllArgsConstructor
+@Getter
+public enum ProductErrorCode implements BaseErrorCode {
+
+    INSUFFICIENT_STOCK(HttpStatus.CONFLICT, "PRODUCT409_0", "재고가 부족합니다"),
+    ;
+
+    private final HttpStatus httpStatus;
+    private final String code;
+    private final String message;
+}
