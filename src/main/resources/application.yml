@@ -1,0 +1,13 @@
+spring:
+  config:
+    import: classpath:/yaml/
+  profiles:
+    group:
+      logging-dev: dev, log
+      logging-local: local, log
+      logging-test: test, log
+    active: ${SPRING_PROFILES_ACTIVE}
+
+jwt:
+  secret: ${JWT_SECRET}
+  expiration-ms: 3600000
