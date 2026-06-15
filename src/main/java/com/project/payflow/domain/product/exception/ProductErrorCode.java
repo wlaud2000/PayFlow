@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 @Getter
 public enum ProductErrorCode implements BaseErrorCode {
 
+    PRODUCT_NOT_FOUND(HttpStatus.NOT_FOUND, "PRODUCT404_0", "존재하지 않는 상품입니다"),
     INSUFFICIENT_STOCK(HttpStatus.CONFLICT, "PRODUCT409_0", "재고가 부족합니다"),
     ;
 
