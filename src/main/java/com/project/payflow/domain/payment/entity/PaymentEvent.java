@@ -3,22 +3,21 @@ package com.project.payflow.domain.payment.entity;
 import com.project.payflow.domain.payment.enums.PaymentEventStatus;
 import com.project.payflow.domain.payment.enums.PaymentEventType;
 import jakarta.persistence.*;
-import lombok.AccessLevel;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 
 @Entity
+@Getter
+@Builder
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Table(
         name = "payment_event",
         uniqueConstraints = @UniqueConstraint(columnNames = "idempotency_key")
 )
-@Getter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
 @EntityListeners(AuditingEntityListener.class)
 public class PaymentEvent {
 
@@ -44,14 +43,6 @@ public class PaymentEvent {
     @CreatedDate
     @Column(name = "created_at", updatable = false, nullable = false)
     private LocalDateTime createdAt;
-
-    @Builder
-    public PaymentEvent(Payment payment, String idempotencyKey, PaymentEventType eventType) {
-        this.payment = payment;
-        this.idempotencyKey = idempotencyKey;
-        this.eventType = eventType;
-        this.status = PaymentEventStatus.PENDING;
-    }
 
     public static PaymentEvent pending(Payment payment, String idempotencyKey, PaymentEventType eventType) {
         return PaymentEvent.builder()

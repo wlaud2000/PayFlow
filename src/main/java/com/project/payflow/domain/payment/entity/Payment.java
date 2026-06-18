@@ -4,15 +4,14 @@ import com.project.payflow.domain.order.entity.Order;
 import com.project.payflow.domain.payment.enums.PaymentStatus;
 import com.project.payflow.global.entity.BaseEntity;
 import jakarta.persistence.*;
-import lombok.AccessLevel;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 @Entity
-@Table(name = "payment")
 @Getter
+@Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
+@Table(name = "payment")
 public class Payment extends BaseEntity {
 
     @Id
@@ -33,13 +32,6 @@ public class Payment extends BaseEntity {
     @Column(name = "pg_transaction_id")
     private String pgTransactionId;
 
-    @Builder
-    public Payment(Order order, Long amount) {
-        this.order = order;
-        this.amount = amount;
-        this.status = PaymentStatus.PENDING;
-    }
-
     public void complete(String pgTransactionId) {
         this.status = PaymentStatus.COMPLETED;
         this.pgTransactionId = pgTransactionId;
@@ -51,5 +43,9 @@ public class Payment extends BaseEntity {
 
     public void cancel() {
         this.status = PaymentStatus.CANCELLED;
+    }
+
+    public void refund(){
+        this.status = PaymentStatus.REFUNDED;
     }
 }

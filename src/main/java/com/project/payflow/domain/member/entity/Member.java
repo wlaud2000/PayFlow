@@ -2,15 +2,14 @@ package com.project.payflow.domain.member.entity;
 
 import com.project.payflow.global.entity.BaseEntity;
 import jakarta.persistence.*;
-import lombok.AccessLevel;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 @Entity
-@Table(name = "member")
 @Getter
+@Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
+@Table(name = "member")
 public class Member extends BaseEntity {
 
     @Id
@@ -25,11 +24,4 @@ public class Member extends BaseEntity {
 
     @Column(nullable = false)
     private String name;
-
-    @Builder
-    public Member(String email, String password, String name) {
-        this.email = email;
-        this.password = password;
-        this.name = name;
-    }
 }

@@ -4,15 +4,14 @@ import com.project.payflow.domain.product.exception.ProductErrorCode;
 import com.project.payflow.domain.product.exception.ProductException;
 import com.project.payflow.global.entity.BaseEntity;
 import jakarta.persistence.*;
-import lombok.AccessLevel;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 @Entity
-@Table(name = "product")
 @Getter
+@Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
+@Table(name = "product")
 public class Product extends BaseEntity {
 
     @Id
@@ -30,13 +29,6 @@ public class Product extends BaseEntity {
 
     @Version
     private Long version;
-
-    @Builder
-    public Product(String name, Long price, Integer stock) {
-        this.name = name;
-        this.price = price;
-        this.stock = stock;
-    }
 
     public void decreaseStock(int quantity) {
         if (this.stock < quantity) {

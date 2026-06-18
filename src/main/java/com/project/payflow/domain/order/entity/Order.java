@@ -5,15 +5,14 @@ import com.project.payflow.domain.order.enums.OrderStatus;
 import com.project.payflow.domain.product.entity.Product;
 import com.project.payflow.global.entity.BaseEntity;
 import jakarta.persistence.*;
-import lombok.AccessLevel;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 @Entity
-@Table(name = "orders")
 @Getter
+@Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
+@Table(name = "orders")
 public class Order extends BaseEntity {
 
     @Id
@@ -34,14 +33,6 @@ public class Order extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private OrderStatus status;
-
-    @Builder
-    public Order(Member member, Product product, Integer quantity) {
-        this.member = member;
-        this.product = product;
-        this.quantity = quantity;
-        this.status = OrderStatus.PENDING;
-    }
 
     public void updateStatus(OrderStatus status) {
         this.status = status;
