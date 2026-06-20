@@ -18,6 +18,7 @@ import com.project.payflow.domain.payment.toss.TossPaymentsClient;
 import com.project.payflow.domain.payment.toss.dto.TossCancelRequest;
 import com.project.payflow.domain.payment.toss.dto.TossConfirmRequest;
 import com.project.payflow.domain.payment.toss.dto.TossConfirmResponse;
+import com.project.payflow.domain.product.service.ProductStockService;
 import com.project.payflow.global.config.TossPaymentsProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -27,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class PaymentService {
 
+    private final ProductStockService productStockService;
     private final PaymentRepository paymentRepository;
     private final PaymentEventRepository paymentEventRepository;
     private final OrderRepository orderRepository;
@@ -97,7 +99,10 @@ public class PaymentService {
         payment.complete(tossConfirmResponse.paymentKey());
         payment.getOrder().updateStatus(OrderStatus.PAID);
         event.complete();
-        payment.getOrder().getProduct().decreaseStock(payment.getOrder().getQuantity());
+        productStockService.decreaseWithOptimisticLock(
+                payment.getOrder().getProduct().getId(),
+                payment.getOrder().getQuantity()
+        );
 
         return PaymentResponse.from(payment);
     }
@@ -145,7 +150,10 @@ public class PaymentService {
         event.complete();
         payment.refund();
         payment.getOrder().updateStatus(OrderStatus.REFUNDED);
-        payment.getOrder().getProduct().increaseStock(payment.getOrder().getQuantity());
+        productStockService.increaseStock(
+                payment.getOrder().getProduct().getId(),
+                payment.getOrder().getQuantity()
+        );
 
         return PaymentResponse.from(payment);
     }
