@@ -57,6 +57,9 @@ dependencies {
 
     // WebClient (TossPayments API 호출용)
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
+    // Redis
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 }
 
 tasks.named('test') {
