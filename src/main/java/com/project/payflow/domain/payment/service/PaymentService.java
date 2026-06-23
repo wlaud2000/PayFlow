@@ -18,17 +18,24 @@ import com.project.payflow.domain.payment.toss.TossPaymentsClient;
 import com.project.payflow.domain.payment.toss.dto.TossCancelRequest;
 import com.project.payflow.domain.payment.toss.dto.TossConfirmRequest;
 import com.project.payflow.domain.payment.toss.dto.TossConfirmResponse;
+import com.project.payflow.domain.product.service.ProductService;
 import com.project.payflow.domain.product.service.ProductStockService;
+import com.project.payflow.domain.product.service.RedisStockService;
 import com.project.payflow.global.config.TossPaymentsProperties;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
-public class PaymentService {
+public class PaymentService{
 
     private final ProductStockService productStockService;
+    private final ProductService productService;
+    private final RedisStockService redisStockService;
     private final PaymentRepository paymentRepository;
     private final PaymentEventRepository paymentEventRepository;
     private final OrderRepository orderRepository;
@@ -36,7 +43,7 @@ public class PaymentService {
     private final TossPaymentsProperties tossPaymentsProperties;
 
     @Transactional
-    public PaymentRequestResponse requestPayment(Long memberId, PaymentRequestDto request) {
+    public PaymentRequestResponse requestPayment(Long memberId, PaymentRequestDto request){
         Order order = orderRepository.findById(request.orderId())
                 .orElseThrow(() -> new OrderException(OrderErrorCode.ORDER_NOT_FOUND));
 
@@ -61,7 +68,6 @@ public class PaymentService {
         paymentRepository.save(payment);
 
         String idempotencyKey = order.getId() + ":" + PaymentEventType.CONFIRM.name();
-
         paymentEventRepository.save(PaymentEvent.pending(payment, idempotencyKey, PaymentEventType.CONFIRM));
 
         order.updateStatus(OrderStatus.PAYING);
@@ -69,10 +75,17 @@ public class PaymentService {
         return PaymentRequestResponse.from(payment, order, request, tossPaymentsProperties);
     }
 
-    // TossPayments API 성공 후 DB 저장 실패 시 결제 상태 불일치 발생 가능.
-    // 현재는 @Transactional로 묶어서 단순 처리하되, Kafka 스프린트에서 Outbox 패턴으로 해결 예정
+    /**
+     * [Known Limitation]
+     * Redis 차감 성공 후 DB 동기화 실패 시 Redis 재고가 실제보다 적게 표시될 수 있음.
+     * StockSyncBatchService(10분 주기)가 이 불일치를 감지하고 로그로 알린다.
+     * 결제 자체는 예외 처리로 실패 응답하여 사용자가 재시도하도록 유도.
+     *
+     * TossPayments API 성공 후 DB 저장 실패 시 결제 상태 불일치 발생 가능.
+     * 현재는 @Transactional로 묶어서 단순 처리하되, Kafka 스프린트에서 Outbox 패턴으로 해결 예정.
+     */
     @Transactional
-    public PaymentResponse confirmPayment(ConfirmRequest request) {
+    public PaymentResponse confirmPayment(ConfirmRequest request){
         Long orderId = Long.valueOf(request.orderId());
         Payment payment = paymentRepository.findByOrder_Id(orderId)
                 .orElseThrow(() -> new PaymentException(PaymentErrorCode.PAYMENT_NOT_FOUND));
@@ -99,16 +112,24 @@ public class PaymentService {
         payment.complete(tossConfirmResponse.paymentKey());
         payment.getOrder().updateStatus(OrderStatus.PAID);
         event.complete();
-        productStockService.decreaseWithOptimisticLock(
-                payment.getOrder().getProduct().getId(),
-                payment.getOrder().getQuantity()
-        );
+
+        Long productId = payment.getOrder().getProduct().getId();
+        int quantity = payment.getOrder().getQuantity();
+
+        try {
+            redisStockService.decreaseStock(productId, quantity);
+            productService.decreaseStock(productId, quantity);
+        } catch (RedisConnectionFailureException e) {
+            // TODO: Prometheus 연동 시 fallback 발생 횟수 메트릭 추가 예정
+            log.warn("[Redis 장애] 낙관적 락 경로로 전환 (productId={}). fallback 발생 빈도 모니터링 필요.", productId);
+            productStockService.decreaseWithOptimisticLock(productId, quantity);
+        }
 
         return PaymentResponse.from(payment);
     }
 
     @Transactional
-    public PaymentResponse cancelPayment(Long paymentId) {
+    public PaymentResponse cancelPayment(Long paymentId){
         Payment payment = paymentRepository.findById(paymentId)
                 .orElseThrow(() -> new PaymentException(PaymentErrorCode.PAYMENT_NOT_FOUND));
 
@@ -150,10 +171,17 @@ public class PaymentService {
         event.complete();
         payment.refund();
         payment.getOrder().updateStatus(OrderStatus.REFUNDED);
-        productStockService.increaseStock(
-                payment.getOrder().getProduct().getId(),
-                payment.getOrder().getQuantity()
-        );
+
+        Long productId = payment.getOrder().getProduct().getId();
+        int quantity = payment.getOrder().getQuantity();
+
+        productStockService.increaseStock(productId, quantity);
+
+        try {
+            redisStockService.increaseStock(productId, quantity);
+        } catch (RedisConnectionFailureException e) {
+            log.warn("[Redis 장애] 환불 시 Redis 재고 복구 실패 (productId={}). DB 재고는 정상 복구됨.", productId);
+        }
 
         return PaymentResponse.from(payment);
     }
