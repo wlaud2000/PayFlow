@@ -11,6 +11,7 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
 @Service
@@ -22,6 +23,17 @@ public class RedisStockService {
     private final ProductRepository productRepository;
 
     private static final String STOCK_KEY_PREFIX = "STOCK:";
+
+    public final AtomicInteger luaSuccessCount = new AtomicInteger(0);
+    public final AtomicInteger luaInsufficientCount = new AtomicInteger(0);
+
+    public int getLuaSuccessCount() { return luaSuccessCount.get(); }
+    public int getLuaInsufficientCount() { return luaInsufficientCount.get(); }
+
+    public void resetCounts() {
+        luaSuccessCount.set(0);
+        luaInsufficientCount.set(0);
+    }
 
     private String key(Long productId) {
         return STOCK_KEY_PREFIX + productId;
@@ -49,8 +61,11 @@ public class RedisStockService {
         }
 
         if (result == 0L) {
+            luaInsufficientCount.incrementAndGet();
             throw new ProductException(ProductErrorCode.INSUFFICIENT_STOCK);
         }
+
+        luaSuccessCount.incrementAndGet();
     }
 
     public void increaseStock(Long productId, int quantity){

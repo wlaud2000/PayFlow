@@ -60,6 +60,12 @@ dependencies {
 
     // Redis
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
+    // H2 (테스트 인메모리 DB)
+    testRuntimeOnly 'com.h2database:h2'
+
+    // Testcontainers
+    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
 }
 
 tasks.named('test') {

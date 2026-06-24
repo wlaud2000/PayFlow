@@ -11,3 +11,11 @@ spring:
     show-sql: false
     hibernate:
       ddl-auto: create-drop
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+jwt:
+  secret: test-secret-key-for-testing-purposes-only-minimum-256-bits-required
+  expiration-ms: 3600000

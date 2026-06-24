@@ -12,6 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.concurrent.atomic.AtomicInteger;
+
 @Service
 @RequiredArgsConstructor
 public class ProductStockService {
@@ -24,12 +26,16 @@ public class ProductStockService {
 
     private static final int MAX_RETRY = 3;
 
+    // TODO: Prometheus 연동 시 MeterRegistry 기반 메트릭으로 전환 예정
+    public AtomicInteger retryCount = new AtomicInteger(0);
+
     public void decreaseWithOptimisticLock(Long productId, int quantity) {
         for (int attempt = 0; attempt < MAX_RETRY; attempt++) {
             try {
                 self.doDecrease(productId, quantity);
                 return;
             } catch (ObjectOptimisticLockingFailureException e) {
+                retryCount.incrementAndGet();
                 if (attempt == MAX_RETRY - 1) {
                     throw new ProductException(ProductErrorCode.STOCK_DECREASE_FAILED);
                 } try {
