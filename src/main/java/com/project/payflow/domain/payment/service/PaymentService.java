@@ -12,6 +12,7 @@ import com.project.payflow.domain.payment.enums.PaymentEventType;
 import com.project.payflow.domain.payment.enums.PaymentStatus;
 import com.project.payflow.domain.payment.exception.PaymentErrorCode;
 import com.project.payflow.domain.payment.exception.PaymentException;
+import com.project.payflow.domain.payment.exception.PaymentFallbackException;
 import com.project.payflow.domain.payment.repository.PaymentEventRepository;
 import com.project.payflow.domain.payment.repository.PaymentRepository;
 import com.project.payflow.domain.payment.toss.TossPaymentsClient;
@@ -31,7 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class PaymentService{
+public class PaymentService {
 
     private final ProductStockService productStockService;
     private final ProductService productService;
@@ -43,7 +44,7 @@ public class PaymentService{
     private final TossPaymentsProperties tossPaymentsProperties;
 
     @Transactional
-    public PaymentRequestResponse requestPayment(Long memberId, PaymentRequestDto request){
+    public PaymentRequestResponse requestPayment(Long memberId, PaymentRequestDto request) {
         Order order = orderRepository.findById(request.orderId())
                 .orElseThrow(() -> new OrderException(OrderErrorCode.ORDER_NOT_FOUND));
 
@@ -85,7 +86,7 @@ public class PaymentService{
      * 현재는 @Transactional로 묶어서 단순 처리하되, Kafka 스프린트에서 Outbox 패턴으로 해결 예정.
      */
     @Transactional
-    public PaymentResponse confirmPayment(ConfirmRequest request){
+    public PaymentResponse confirmPayment(ConfirmRequest request) {
         Long orderId = Long.valueOf(request.orderId());
         Payment payment = paymentRepository.findByOrder_Id(orderId)
                 .orElseThrow(() -> new PaymentException(PaymentErrorCode.PAYMENT_NOT_FOUND));
@@ -105,13 +106,18 @@ public class PaymentService{
         PaymentEvent event = paymentEventRepository.findByIdempotencyKey(idempotencyKey)
                 .orElseThrow(() -> new PaymentException(PaymentErrorCode.PAYMENT_EVENT_NOT_FOUND));
 
-        TossConfirmResponse tossConfirmResponse = tossPaymentsClient.confirm(
-                new TossConfirmRequest(request.paymentKey(), request.orderId(), request.amount())
-        );
-
-        payment.complete(tossConfirmResponse.paymentKey());
-        payment.getOrder().updateStatus(OrderStatus.PAID);
-        event.complete();
+        try {
+            TossConfirmResponse tossConfirmResponse = tossPaymentsClient.confirm(
+                    new TossConfirmRequest(request.paymentKey(), request.orderId(), request.amount())
+            );
+            payment.complete(tossConfirmResponse.paymentKey());
+            payment.getOrder().updateStatus(OrderStatus.PAID);
+            event.complete();
+        } catch (PaymentFallbackException e) {
+            payment.fail(e.getFailureReason());
+            event.fail();
+            throw new PaymentException(PaymentErrorCode.PAYMENT_GATEWAY_UNAVAILABLE);
+        }
 
         Long productId = payment.getOrder().getProduct().getId();
         int quantity = payment.getOrder().getQuantity();
@@ -129,7 +135,7 @@ public class PaymentService{
     }
 
     @Transactional
-    public PaymentResponse cancelPayment(Long paymentId){
+    public PaymentResponse cancelPayment(Long paymentId) {
         Payment payment = paymentRepository.findById(paymentId)
                 .orElseThrow(() -> new PaymentException(PaymentErrorCode.PAYMENT_NOT_FOUND));
 
@@ -150,7 +156,7 @@ public class PaymentService{
     }
 
     @Transactional
-    public PaymentResponse refundPayment(Long paymentId, RefundRequest request){
+    public PaymentResponse refundPayment(Long paymentId, RefundRequest request) {
         Payment payment = paymentRepository.findById(paymentId)
                 .orElseThrow(() -> new PaymentException(PaymentErrorCode.PAYMENT_NOT_FOUND));
 
@@ -163,10 +169,15 @@ public class PaymentService{
                 PaymentEvent.pending(payment, idempotencyKey, PaymentEventType.REFUND)
         );
 
-        tossPaymentsClient.cancel(
-                payment.getPgTransactionId(),
-                new TossCancelRequest(request.cancelReason())
-        );
+        try {
+            tossPaymentsClient.cancel(
+                    payment.getPgTransactionId(),
+                    new TossCancelRequest(request.cancelReason())
+            );
+        } catch (PaymentFallbackException e) {
+            event.fail();
+            throw new PaymentException(PaymentErrorCode.REFUND_GATEWAY_UNAVAILABLE);
+        }
 
         event.complete();
         payment.refund();
@@ -187,7 +198,7 @@ public class PaymentService{
     }
 
     @Transactional(readOnly = true)
-    public PaymentResponse getPayment(Long paymentId){
+    public PaymentResponse getPayment(Long paymentId) {
         return paymentRepository.findById(paymentId)
                 .map(PaymentResponse::from)
                 .orElseThrow(() -> new PaymentException(PaymentErrorCode.PAYMENT_NOT_FOUND));

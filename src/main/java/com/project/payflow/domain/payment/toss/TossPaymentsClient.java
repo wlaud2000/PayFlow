@@ -1,7 +1,7 @@
 package com.project.payflow.domain.payment.toss;
 
-import com.project.payflow.domain.payment.exception.PaymentErrorCode;
-import com.project.payflow.domain.payment.exception.PaymentException;
+import com.project.payflow.domain.payment.enums.FailureReason;
+import com.project.payflow.domain.payment.exception.PaymentFallbackException;
 import com.project.payflow.domain.payment.toss.dto.TossCancelRequest;
 import com.project.payflow.domain.payment.toss.dto.TossConfirmRequest;
 import com.project.payflow.domain.payment.toss.dto.TossConfirmResponse;
@@ -22,17 +22,19 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
+import java.util.concurrent.TimeoutException;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class TossPaymentsClient{
+public class TossPaymentsClient {
 
     private final WebClient tossPaymentsWebClient;
     private final CircuitBreakerRegistry circuitBreakerRegistry;
     private final RetryRegistry retryRegistry;
 
     @PostConstruct
-    void registerEventListeners(){
+    void registerEventListeners() {
         circuitBreakerRegistry.circuitBreaker("tosspayments")
                 .getEventPublisher()
                 .onStateTransition(event -> log.warn(
@@ -53,7 +55,7 @@ public class TossPaymentsClient{
 
     @CircuitBreaker(name = "tosspayments", fallbackMethod = "confirmFallback")
     @Retry(name = "tosspayments")
-    public TossConfirmResponse confirm(TossConfirmRequest request){
+    public TossConfirmResponse confirm(TossConfirmRequest request) {
         return tossPaymentsWebClient.post()
                 .uri("/v1/payments/confirm")
                 .bodyValue(request)
@@ -75,13 +77,16 @@ public class TossPaymentsClient{
                 .block();
     }
 
-    private TossConfirmResponse confirmFallback(TossConfirmRequest request, CallNotPermittedException e){
-        throw new PaymentException(PaymentErrorCode.PAYMENT_GATEWAY_UNAVAILABLE);
+    private TossConfirmResponse confirmFallback(TossConfirmRequest request, Throwable t) {
+        FailureReason reason = classifyFailureReason(t);
+        log.error("[CONFIRM_FAILED] TossPayments 결제 승인 실패 — reason={}, exception={}",
+                reason, t.getClass().getSimpleName());
+        throw new PaymentFallbackException(reason, t);
     }
 
     @CircuitBreaker(name = "tosspayments", fallbackMethod = "cancelFallback")
     @Retry(name = "tosspayments")
-    public void cancel(String paymentKey, TossCancelRequest request){
+    public void cancel(String paymentKey, TossCancelRequest request) {
         tossPaymentsWebClient.post()
                 .uri("/v1/payments/{paymentKey}/cancel", paymentKey)
                 .bodyValue(request)
@@ -98,8 +103,22 @@ public class TossPaymentsClient{
                 .block();
     }
 
-    private void cancelFallback(String paymentKey, TossCancelRequest request, CallNotPermittedException e){
-        log.error("[CircuitBreaker-tosspayments] 환불 CB 차단 — 운영자 수동 처리 필요 (paymentKey={})", paymentKey);
-        throw new PaymentException(PaymentErrorCode.REFUND_GATEWAY_UNAVAILABLE);
+    private void cancelFallback(String paymentKey, TossCancelRequest request, Throwable t) {
+        FailureReason reason = classifyFailureReason(t);
+        log.error("[REFUND_FAILED] TossPayments 환불 처리 실패 — reason={}, paymentKey={}, exception={}",
+                reason, paymentKey, t.getClass().getSimpleName());
+        throw new PaymentFallbackException(reason, t);
+    }
+
+    private FailureReason classifyFailureReason(Throwable t) {
+        if (t instanceof CallNotPermittedException) {
+            return FailureReason.CIRCUIT_OPEN;
+        }
+        if (t instanceof TimeoutException) {
+            return FailureReason.TIMEOUT;
+        }
+        // 미분류 예외는 RETRY_EXHAUSTED로 처리.
+        // 새로운 예외 타입이 추가될 경우 이 분기를 먼저 확인할 것.
+        return FailureReason.RETRY_EXHAUSTED;
     }
 }
