@@ -22,3 +22,15 @@ resilience4j:
         slidingWindowSize: 10
         minimumNumberOfCalls: 5
         permittedNumberOfCallsInHalfOpenState: 3
+  retry:
+    instances:
+      tosspayments:
+        maxAttempts: 3
+        waitDuration: 1s
+        retryExceptions:
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+          - com.project.payflow.domain.payment.toss.exception.TossPaymentsServerException
+        ignoreExceptions:
+          - com.project.payflow.domain.payment.toss.exception.TossPaymentsClientException
+          - com.project.payflow.domain.payment.toss.exception.PaymentAlreadyApprovedException
