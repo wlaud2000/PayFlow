@@ -1,6 +1,7 @@
 package com.project.payflow.domain.payment.entity;
 
 import com.project.payflow.domain.order.entity.Order;
+import com.project.payflow.domain.payment.enums.FailureReason;
 import com.project.payflow.domain.payment.enums.PaymentStatus;
 import com.project.payflow.global.entity.BaseEntity;
 import jakarta.persistence.*;
@@ -32,20 +33,25 @@ public class Payment extends BaseEntity {
     @Column(name = "pg_transaction_id")
     private String pgTransactionId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "failure_reason")
+    private FailureReason failureReason;
+
     public void complete(String pgTransactionId) {
         this.status = PaymentStatus.COMPLETED;
         this.pgTransactionId = pgTransactionId;
     }
 
-    public void fail() {
+    public void fail(FailureReason reason) {
         this.status = PaymentStatus.FAILED;
+        this.failureReason = reason;
     }
 
     public void cancel() {
         this.status = PaymentStatus.CANCELLED;
     }
 
-    public void refund(){
+    public void refund() {
         this.status = PaymentStatus.REFUNDED;
     }
 }
