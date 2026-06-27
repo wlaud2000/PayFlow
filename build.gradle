@@ -63,13 +63,26 @@ dependencies {
 
     // Resilience4j Circuit Breaker
     implementation 'io.github.resilience4j:resilience4j-spring-boot4:2.4.0'
-    implementation 'org.springframework.boot:spring-boot-starter-aop'
 
     // H2 (테스트 인메모리 DB)
     testRuntimeOnly 'com.h2database:h2'
 
     // Testcontainers
     testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+
+    // WireMock (통합 테스트용 PG API 목킹) — jetty12: Spring Boot 4.x (Jakarta EE / Jetty 12) 호환
+    testImplementation 'org.wiremock:wiremock-jetty12:3.9.1'
+}
+
+// wiremock-jetty12 BOM이 jetty-ee10 계열을 12.0.8로 고정하지만
+// Spring Boot 4.1.0 BOM이 core Jetty를 12.1.10으로 올려서 API 불일치 발생.
+// ee10 계열도 같은 버전으로 맞춰 NoSuchMethodError 해소.
+configurations.testRuntimeClasspath {
+    resolutionStrategy {
+        force 'org.eclipse.jetty.ee10:jetty-ee10-servlet:12.1.10'
+        force 'org.eclipse.jetty.ee10:jetty-ee10-servlets:12.1.10'
+        force 'org.eclipse.jetty.ee10:jetty-ee10-webapp:12.1.10'
+    }
 }
 
 tasks.named('test') {

@@ -19,3 +19,19 @@ spring:
 jwt:
   secret: test-secret-key-for-testing-purposes-only-minimum-256-bits-required
   expiration-ms: 3600000
+
+toss:
+  payments:
+    secret-key: test-secret-key
+    client-key: test-client-key
+    base-url: http://localhost:0
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      tosspayments:
+        waitDurationInOpenState: 200ms # 200ms로 단축해 테스트 속도 확보
+  retry:
+    instances:
+      tosspayments:
+        waitDuration: 50ms # 50ms로 단축해 테스트 속도 확보
