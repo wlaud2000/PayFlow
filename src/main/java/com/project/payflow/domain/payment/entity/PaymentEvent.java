@@ -38,7 +38,8 @@ public class PaymentEvent {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private PaymentEventStatus status;
+    @Builder.Default
+    private PaymentEventStatus status = PaymentEventStatus.PENDING;
 
     @CreatedDate
     @Column(name = "created_at", updatable = false, nullable = false)

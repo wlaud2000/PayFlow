@@ -20,9 +20,9 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class OrderService {
 
-    private OrderRepository orderRepository;
-    private MemberRepository memberRepository;
-    private ProductRepository productRepository;
+    private final OrderRepository orderRepository;
+    private final MemberRepository memberRepository;
+    private final ProductRepository productRepository;
 
     @Transactional
     public OrderResponse createOrder(Long memberId, CreateOrderRequest request) {
