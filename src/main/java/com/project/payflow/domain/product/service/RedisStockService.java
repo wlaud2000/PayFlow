@@ -3,6 +3,7 @@ package com.project.payflow.domain.product.service;
 import com.project.payflow.domain.product.entity.Product;
 import com.project.payflow.domain.product.exception.ProductErrorCode;
 import com.project.payflow.domain.product.exception.ProductException;
+import com.project.payflow.domain.product.metrics.StockMetrics;
 import com.project.payflow.domain.product.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +22,7 @@ public class RedisStockService {
     private final StringRedisTemplate stringRedisTemplate;
     private final DefaultRedisScript<Long> stockDecrScript;
     private final ProductRepository productRepository;
+    private final StockMetrics stockMetrics;
 
     private static final String STOCK_KEY_PREFIX = "STOCK:";
 
@@ -41,6 +43,7 @@ public class RedisStockService {
 
     public void initStock(Long productId, int quantity) {
         stringRedisTemplate.opsForValue().set(key(productId), String.valueOf(quantity));
+        stockMetrics.registerStockGauge(productId, () -> getStock(productId));
     }
 
     public void decreaseStock(Long productId, int quantity) {
@@ -62,10 +65,12 @@ public class RedisStockService {
 
         if (result == 0L) {
             luaInsufficientCount.incrementAndGet();
+            stockMetrics.incrementOutOfStock();
             throw new ProductException(ProductErrorCode.INSUFFICIENT_STOCK);
         }
 
         luaSuccessCount.incrementAndGet();
+        stockMetrics.incrementDecreaseSuccess();
     }
 
     public void increaseStock(Long productId, int quantity){

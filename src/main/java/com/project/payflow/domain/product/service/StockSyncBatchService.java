@@ -1,6 +1,7 @@
 package com.project.payflow.domain.product.service;
 
 import com.project.payflow.domain.product.entity.Product;
+import com.project.payflow.domain.product.metrics.StockMetrics;
 import com.project.payflow.domain.product.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,8 +19,8 @@ public class StockSyncBatchService {
 
     private final ProductRepository productRepository;
     private final RedisStockService redisStockService;
+    private final StockMetrics stockMetrics;
 
-    // TODO : Prometheus 연동 시 MeterRegistry Gauge로 전환 예정
     public final AtomicInteger inconsistencyCount = new AtomicInteger(0);
 
     @Scheduled(fixedRate = 600_000)
@@ -37,12 +38,14 @@ public class StockSyncBatchService {
             if (redisStock == null) {
                 log.warn("[StockSync] Redis 키 없음 - productId={}, DB 재고={}", productId, product.getStock());
                 inconsistencyCount.incrementAndGet();
+                stockMetrics.incrementSyncInconsistency();
                 continue;
             }
 
             if (!redisStock.equals(product.getStock().longValue())) {
                 log.warn("[StockSync] 재고 불일치 감지 - productId={}, redis={}, db={}", productId, redisStock, product.getStock());
                 inconsistencyCount.incrementAndGet();
+                stockMetrics.incrementSyncInconsistency();
             }
         }
 
