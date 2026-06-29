@@ -1,0 +1,16 @@
+spring:
+  config:
+    activate:
+      on-profile: load-test
+
+  datasource:
+    hikari:
+      maximum-pool-size: 50
+      minimum-idle: 10
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+toss:
+  payments:
+    base-url: http://localhost:8888

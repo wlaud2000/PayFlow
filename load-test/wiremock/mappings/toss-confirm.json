@@ -1,0 +1,15 @@
+{
+  "request": {
+    "method": "POST",
+    "url": "/v1/payments/confirm"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "paymentKey": "toss_stub_payment_key"
+    }
+  }
+}
