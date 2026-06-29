@@ -48,7 +48,7 @@ public class PaymentService {
         Order order = orderRepository.findById(request.orderId())
                 .orElseThrow(() -> new OrderException(OrderErrorCode.ORDER_NOT_FOUND));
 
-        if (!order.getMember().equals(memberId)) {
+        if (!order.getMember().getId().equals(memberId)) {
             throw new OrderException(OrderErrorCode.ORDER_FORBIDDEN);
         }
 
@@ -124,12 +124,11 @@ public class PaymentService {
 
         try {
             redisStockService.decreaseStock(productId, quantity);
-            productService.decreaseStock(productId, quantity);
         } catch (RedisConnectionFailureException e) {
-            // TODO: Prometheus 연동 시 fallback 발생 횟수 메트릭 추가 예정
             log.warn("[Redis 장애] 낙관적 락 경로로 전환 (productId={}). fallback 발생 빈도 모니터링 필요.", productId);
-            productStockService.decreaseWithOptimisticLock(productId, quantity);
         }
+        // REQUIRES_NEW + 재시도(3회, 50ms 지수 백오프)로 OptimisticLockException 처리
+        productStockService.decreaseWithOptimisticLock(productId, quantity);
 
         return PaymentResponse.from(payment);
     }
