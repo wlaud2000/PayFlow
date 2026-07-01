@@ -30,6 +30,9 @@ public class Product extends BaseEntity {
     @Version
     private Long version;
 
+    @Column(columnDefinition = "TEXT")
+    private String campaignDescription;
+
     public void decreaseStock(int quantity) {
         if (this.stock < quantity) {
             throw new ProductException(ProductErrorCode.INSUFFICIENT_STOCK);
