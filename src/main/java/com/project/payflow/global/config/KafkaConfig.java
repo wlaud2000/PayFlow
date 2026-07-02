@@ -1,12 +1,34 @@
 package com.project.payflow.global.config;
 
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.serialization.StringSerializer;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.TopicBuilder;
+import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaAdmin;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.serializer.JacksonJsonSerializer;
+
+import java.util.HashMap;
+import java.util.Map;
 
 @Configuration
 public class KafkaConfig {
+
+    // Spring Boot 4.x는 Kafka 자동 구성 없음 → KafkaTemplate 빈을 직접 정의해야 함
+    @Bean
+    public KafkaTemplate<String, Object> kafkaTemplate(
+            @Value("${spring.kafka.bootstrap-servers}") String bootstrapServers,
+            @Value("${spring.kafka.producer.acks}") String acks) {
+        Map<String, Object> config = new HashMap<>();
+        config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        config.put(ProducerConfig.ACKS_CONFIG, acks);
+        var producerFactory = new DefaultKafkaProducerFactory<>(
+                config, new StringSerializer(), new JacksonJsonSerializer<>());
+        return new KafkaTemplate<>(producerFactory);
+    }
 
     // init 컨테이너와 이중화: Docker Compose 없이 앱만 기동해도 토픽 자동 생성
     @Bean
