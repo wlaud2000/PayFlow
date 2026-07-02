@@ -15,6 +15,28 @@ spring:
     redis:
       host: localhost
       port: 6379
+  kafka:
+    bootstrap-servers: localhost:9094  # PLAINTEXT_HOST 리스너 (호스트 Spring Boot 앱용)
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      # acks: all — 모든 ISR replica 응답 확인 후 완료 처리
+      # 단일 브로커에서는 replica 1개라 acks:1과 동일하지만, 프로덕션 배포 시 기본값으로 동작하도록 미리 설정
+      acks: all
+    consumer:
+      group-id: payment-service
+      # auto-offset-reset: earliest — 새 컨슈머 그룹 최초 연결 시 가장 오래된 메시지부터 소비
+      # latest이면 구독 전 발행된 메시지를 놓쳐 개발 중 테스트가 어려워짐
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      # enable-auto-commit: false — 메시지 처리 완료 후 수동으로 offset 커밋
+      # 자동 커밋은 처리 실패 여부와 무관하게 주기적으로 커밋 → 실패 메시지 재처리 불가
+      enable-auto-commit: false
+      properties:
+        # JsonDeserializer 역직렬화 허용 패키지 화이트리스트
+        # 미설정 시 IllegalArgumentException 발생
+        spring.json.trusted.packages: "com.project.payflow.*"
 
 toss:
   payments:
