@@ -1,0 +1,82 @@
+# KRaft 모드: Zookeeper 없이 Kafka 단독으로 메타데이터 관리 (Kafka 3.3+부터 Production-ready)
+# apache/kafka:3.8.0 선택 이유: Apache 공식 이미지, 경량, 설정 단순
+# (confluentinc/cp-kafka는 Schema Registry 등 불필요한 컴포넌트 포함)
+
+services:
+
+  kafka:
+    image: apache/kafka:3.8.0
+    container_name: kafka
+    ports:
+      - "9092:9092"  # Docker 내부 컨테이너(kafka-ui, kafka-init) 통신용
+      - "9094:9094"  # 호스트 Spring Boot 앱 → Kafka 통신용
+    environment:
+      # KRaft 기본 설정
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller  # 단일 노드에서 브로커 + 컨트롤러 역할 겸임
+      KAFKA_CLUSTER_ID: "AkU3OEVBNTcwNTJENDM2Qk"  # 재시작 시 메타데이터 충돌 방지를 위해 고정
+
+      # 리스너 설정 (두 가지 리스너 분리)
+      # PLAINTEXT:      Docker 네트워크 내부용 (kafka-ui, kafka-init → kafka)
+      # PLAINTEXT_HOST: 호스트 Spring Boot 앱 → Kafka 통신용
+      # CONTROLLER:     KRaft 컨트롤러 내부 통신용 (클라이언트 비노출)
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:9094,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+
+      # 단일 브로커 설정: 복제본이 1개뿐이므로 모두 1로 설정
+      # 미설정 시 기본값 3을 사용하려다 ISR 부족으로 내부 토픽 생성/트랜잭션이 실패할 수 있음
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+
+    healthcheck:
+      test: [ "CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list" ]
+      start_period: 30s  # KRaft 메타데이터 초기화 완료까지 대기, 이 기간 실패는 retries에 미포함
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # 토픽 초기화 컨테이너: kafka 헬스체크 통과 후 토픽 9개 순차 생성 후 종료
+  kafka-init:
+    image: apache/kafka:3.8.0
+    container_name: kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: [ "/bin/bash", "-c" ]
+    command:
+      - |
+        # 일반 토픽: partition 3
+        # 파티션 수 = Consumer Group 내 최대 병렬 처리 가능 컨슈머 수
+        # 파티션 3 → 컨슈머 인스턴스 3개까지 병렬 처리 가능한 구조를 미리 확보
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payment-approved --partitions 3 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payment-stock-decreased --partitions 3 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payment-stock-failed --partitions 3 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payment-point-earned --partitions 3 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payment-point-failed --partitions 3 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payment-compensation --partitions 3 --replication-factor 1
+
+        # DLQ 토픽: partition 1
+        # 처리 실패 메시지를 격리하는 용도로 높은 처리량 불필요
+        # 운영자가 수동으로 재처리하는 단일 Consumer 구조에서 파티션 3은 낭비
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payment-approved-dlq --partitions 1 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payment-stock-dlq --partitions 1 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payment-point-dlq --partitions 1 --replication-factor 1
+
+        echo "All 9 topics created successfully."
+
+  # Kafka UI: 토픽/메시지/컨슈머 그룹 브라우저 확인
+  # 포트 8989: 8080(Spring Boot), 8888(WireMock)과 충돌 회피
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "8989:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092  # Docker 내부 PLAINTEXT 리스너로 연결
+    depends_on:
+      - kafka
