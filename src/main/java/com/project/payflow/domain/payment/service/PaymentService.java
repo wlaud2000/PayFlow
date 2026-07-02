@@ -23,8 +23,10 @@ import com.project.payflow.domain.product.service.ProductService;
 import com.project.payflow.domain.product.service.ProductStockService;
 import com.project.payflow.domain.product.service.RedisStockService;
 import com.project.payflow.global.config.TossPaymentsProperties;
+import com.project.payflow.global.kafka.event.PaymentApprovedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,6 +44,7 @@ public class PaymentService {
     private final OrderRepository orderRepository;
     private final TossPaymentsClient tossPaymentsClient;
     private final TossPaymentsProperties tossPaymentsProperties;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     @Transactional
     public PaymentRequestResponse requestPayment(Long memberId, PaymentRequestDto request) {
@@ -129,6 +132,20 @@ public class PaymentService {
         }
         // REQUIRES_NEW + 재시도(3회, 50ms 지수 백오프)로 OptimisticLockException 처리
         productStockService.decreaseWithOptimisticLock(productId, quantity);
+
+        // [Known Limitation] 과도기 상태 — 동기 처리와 이벤트 발행이 공존
+        // 현재: 재고 차감을 동기로 처리하고, 이벤트도 발행 (중복 처리 가능성)
+        // 개선: 다음 스프린트에서 Consumer가 재고 차감을 담당하면 여기서 제거 예정
+        // 이 구조는 Kafka 없이도 동작 가능한 안전망 역할을 함
+        applicationEventPublisher.publishEvent(PaymentApprovedEvent.of(
+                payment.getId(),
+                payment.getOrder().getId(),
+                payment.getOrder().getMember().getId(),
+                productId,
+                quantity,
+                payment.getAmount(),
+                payment.getPgTransactionId()
+        ));
 
         return PaymentResponse.from(payment);
     }
